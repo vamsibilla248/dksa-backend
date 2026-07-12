@@ -2,6 +2,7 @@ package com.dksa.controller;
 
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -10,8 +11,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.dksa.dto.AnalyticsResponse;
+import com.dksa.dto.CustomerDto;
 import com.dksa.dto.DashboardResponse;
 import com.dksa.dto.PaymentToggleRequest;
+import com.dksa.dto.TurfResponse;
 import com.dksa.entity.Booking;
 import com.dksa.entity.Payment;
 import com.dksa.entity.User;
@@ -20,12 +23,17 @@ import com.dksa.repository.PaymentRepository;
 import com.dksa.repository.UserRepository;
 import com.dksa.service.AdminService;
 import com.dksa.service.AppSettingService;
+import com.dksa.service.TurfService;
+import com.dksa.service.UserService;
 
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
 
     private final AdminService adminService;
+    
+    @Autowired
+    private UserService userService;
     
     private final BookingRepository bookingRepository;
     
@@ -34,6 +42,9 @@ public class AdminController {
     private final UserRepository userRepository;
     
 	private final AppSettingService appSettingService;
+	
+	@Autowired
+	private TurfService turfService;
 
    
 
@@ -42,7 +53,8 @@ public class AdminController {
 	        BookingRepository bookingRepository,
 	        PaymentRepository paymentRepository,
 	        UserRepository userRepository,
-	        AppSettingService appSettingService) {
+	        AppSettingService appSettingService,
+	        UserService UserService){
 
 	    this.adminService = adminService;
 	    this.bookingRepository = bookingRepository;
@@ -105,4 +117,14 @@ public class AdminController {
 	    return ResponseEntity.ok(
 	            adminService.getAnalytics());
 	}
+	
+	@GetMapping("/customers")
+	public ResponseEntity<List<CustomerDto>> getCustomers() {
+
+	    return ResponseEntity.ok(
+	            userService.getAllCustomers()
+	    );
+
+	}
+
 }

@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -19,6 +21,7 @@ import com.dksa.dto.AdminBookingResponse;
 import com.dksa.dto.BookingRequest;
 import com.dksa.dto.BookingResponse;
 import com.dksa.dto.MonthlyReportResponse;
+import com.dksa.dto.OfflineBookingRequest;
 import com.dksa.dto.ReceiptResponse;
 import com.dksa.dto.ReportResponse;
 import com.dksa.entity.Booking;
@@ -27,12 +30,14 @@ import com.dksa.entity.Payment;
 import com.dksa.entity.PaymentStatus;
 import com.dksa.entity.Slot;
 import com.dksa.entity.SlotStatus;
+import com.dksa.entity.Turf;
 import com.dksa.entity.User;
 import com.dksa.exception.ResourceNotFoundException;
 import com.dksa.repository.BookingRepository;
 import com.dksa.repository.BookingSlotRepository;
 import com.dksa.repository.PaymentRepository;
 import com.dksa.repository.SlotRepository;
+import com.dksa.repository.TurfRepository;
 import com.dksa.repository.UserRepository;
 import com.dksa.service.AppSettingService;
 import com.dksa.service.BookingService;
@@ -54,37 +59,34 @@ public class BookingServiceImpl implements BookingService {
 	private final SlotRepository slotRepository;
 
 	private final UserRepository userRepository;
-	
+
 	private final PaymentRepository paymentRepository;
-	
+
 	private final AppSettingService appSettingService;
-	
+
 	private final EmailService emailService;
-	
+
 	private final PdfService pdfService;
-	
-	private final WhatsAppService  whatsAppService;
 
-	public BookingServiceImpl(
-	        BookingRepository bookingRepository,
-	        BookingSlotRepository bookingSlotRepository,
-	        SlotRepository slotRepository,
-	        UserRepository userRepository,
-	        PaymentRepository paymentRepository,
-	        AppSettingService appSettingService,
-	        EmailService emailService,
-	        PdfService pdfService,
-	        WhatsAppService  whatsAppService) {
+	private final WhatsAppService whatsAppService;
 
-	    this.bookingRepository = bookingRepository;
-	    this.bookingSlotRepository = bookingSlotRepository;
-	    this.slotRepository = slotRepository;
-	    this.userRepository = userRepository;
-	    this.paymentRepository = paymentRepository;
-	    this.appSettingService = appSettingService;
-	    this.emailService = emailService;
-	    this.pdfService = pdfService;
-	    this.whatsAppService = whatsAppService;
+	@Autowired
+	private TurfRepository turfRepository;
+
+	public BookingServiceImpl(BookingRepository bookingRepository, BookingSlotRepository bookingSlotRepository,
+			SlotRepository slotRepository, UserRepository userRepository, PaymentRepository paymentRepository,
+			AppSettingService appSettingService, EmailService emailService, PdfService pdfService,
+			WhatsAppService whatsAppService) {
+
+		this.bookingRepository = bookingRepository;
+		this.bookingSlotRepository = bookingSlotRepository;
+		this.slotRepository = slotRepository;
+		this.userRepository = userRepository;
+		this.paymentRepository = paymentRepository;
+		this.appSettingService = appSettingService;
+		this.emailService = emailService;
+		this.pdfService = pdfService;
+		this.whatsAppService = whatsAppService;
 	}
 
 	@Override
@@ -112,7 +114,7 @@ public class BookingServiceImpl implements BookingService {
 		Long turfId = slots.get(0).getTurf().getId();
 
 		boolean sameTurf = slots.stream().allMatch(slot -> slot.getTurf().getId().equals(turfId));
-		
+
 		if (!SlotValidationUtil.areConsecutiveSlots(slots)) {
 
 			throw new RuntimeException("Please select consecutive slots only");
@@ -147,45 +149,35 @@ public class BookingServiceImpl implements BookingService {
 
 			slotRepository.save(slot);
 		}
-		
+
 		try {
-			
+
 			// email
-			emailService.sendBookingConfirmation(
-			        user.getEmail(),
-			        user.getName(),
-			        booking.getId());
+			emailService.sendBookingConfirmation(user.getEmail(), user.getName(), booking.getId());
 
 			// pdf
-			byte[] pdf =
-			        pdfService.generateReceiptPdf(
-			                booking.getId());
+			byte[] pdf = pdfService.generateReceiptPdf(booking.getId());
 
 			// pdf email
-			emailService.sendReceiptEmail(
-			        user.getEmail(),
-			        user.getName(),
-			        pdf);
-			
+			emailService.sendReceiptEmail(user.getEmail(), user.getName(), pdf);
+
 			// whatsapp service
-			whatsAppService
-	        .sendBookingMessage(
+			whatsAppService.sendBookingMessage(
 
-	                user.getMobile(),
+					user.getMobile(),
 
-	                booking.getId());
-			
+					booking.getId());
+
 		} catch (Exception e) {
 			e.printStackTrace();
-			
+
 		}
-		
 
 		return BookingResponse.builder().bookingId(booking.getId()).turfName(booking.getTurf().getTurfName())
 				.totalAmount(booking.getTotalAmount()).paymentStatus(booking.getPaymentStatus())
 				.bookingTime(booking.getBookingTime()).slotIds(request.getSlotIds()).build();
 	}
-	
+
 	@Override
 	public List<BookingResponse> getMyBookings() {
 
@@ -196,107 +188,57 @@ public class BookingServiceImpl implements BookingService {
 		User user = userRepository.findByEmail(email)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-		List<Booking> bookings = bookingRepository.findByUserId(user.getId());
+		List<Booking> bookings = bookingRepository.findByUserIdOrderByIdDesc(user.getId());
 
 		return bookings.stream().map(this::mapToResponse).collect(Collectors.toList());
 	}
-	
-	
+
 	private BookingResponse mapToResponse(Booking booking) {
 
-	    DateTimeFormatter formatter =
-	            DateTimeFormatter.ofPattern("hh:mm a");
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("hh:mm a");
 
-	    List<Long> slotIds =
-	            booking.getBookingSlots()
-	                    .stream()
-	                    .map(bs -> bs.getSlot().getId())
-	                    .toList();
+		List<Long> slotIds = booking.getBookingSlots().stream().map(bs -> bs.getSlot().getId()).toList();
 
-	    List<String> slotTimes =
-	            booking.getBookingSlots()
-	                    .stream()
-	                    .map(bs -> {
+		List<String> slotTimes = booking.getBookingSlots().stream().map(bs -> {
 
-	                        LocalTime start =
-	                                bs.getSlot().getSlotTime();
+			LocalTime start = bs.getSlot().getSlotTime();
 
-	                        LocalTime end =
-	                                start.plusMinutes(30);
+			LocalTime end = start.plusMinutes(30);
 
-	                        return start.format(formatter)
-	                                + " - "
-	                                + end.format(formatter);
-	                    })
-	                    .toList();
+			return start.format(formatter) + " - " + end.format(formatter);
+		}).toList();
 
-	    return BookingResponse.builder()
-	            .bookingId(booking.getId())
-	            .turfName(booking.getTurf().getTurfName())
-	            .totalAmount(booking.getTotalAmount())
-	            .paymentStatus(booking.getPaymentStatus())
-	            .bookingTime(booking.getBookingTime())
-	            .slotIds(slotIds)
-	            .slotCount(slotTimes.size())
-	            .slotTimes(slotTimes)
-	            .build();
+		return BookingResponse.builder().bookingId(booking.getId()).turfName(booking.getTurf().getTurfName())
+				.totalAmount(booking.getTotalAmount()).paymentStatus(booking.getPaymentStatus())
+				.bookingTime(booking.getBookingTime()).slotIds(slotIds).slotCount(slotTimes.size()).slotTimes(slotTimes)
+				.build();
 	}
-	
-	
+
 	@Override
 	public ReceiptResponse getReceipt(Long bookingId) {
 
-	    Booking booking = bookingRepository.findById(bookingId)
-	            .orElseThrow(() ->
-	                    new ResourceNotFoundException(
-	                            "Booking not found"));
+		Booking booking = bookingRepository.findById(bookingId)
+				.orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
 
-	    Payment payment = paymentRepository.findByBookingId(bookingId)
-	            .orElseThrow(() ->
-	                    new ResourceNotFoundException(
-	                            "Payment not found"));
+		Payment payment = paymentRepository.findByBookingId(bookingId)
+				.orElseThrow(() -> new ResourceNotFoundException("Payment not found"));
 
-	    DateTimeFormatter formatter =
-	            DateTimeFormatter.ofPattern("hh:mm a");
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("hh:mm a");
 
-	    List<String> slots =
-	            booking.getBookingSlots()
-	                   .stream()
-	                   .map(bs -> {
+		List<String> slots = booking.getBookingSlots().stream().map(bs -> {
 
-	                       LocalTime startTime =
-	                               bs.getSlot()
-	                                 .getSlotTime();
+			LocalTime startTime = bs.getSlot().getSlotTime();
 
-	                       LocalTime endTime =
-	                               startTime.plusMinutes(30);
+			LocalTime endTime = startTime.plusMinutes(30);
 
-	                       return startTime.format(formatter)
-	                               + " - "
-	                               + endTime.format(formatter);
-	                   })
-	                   .toList();
+			return startTime.format(formatter) + " - " + endTime.format(formatter);
+		}).toList();
 
-	    return ReceiptResponse.builder()
-	            .bookingId(booking.getId())
-	            .customerName(
-	                    booking.getUser().getName())
-	            .customerEmail(
-	                    booking.getUser().getEmail())
-	            .turfName(
-	                    booking.getTurf().getTurfName())
-	            .orderId(
-	                    payment.getRazorpayOrderId())
-	            .paymentId(
-	                    payment.getRazorpayPaymentId())
-	            .amount(
-	                    payment.getAmount())
-	            .paymentStatus(
-	                    payment.getPaymentStatus())
-	            .bookingTime(
-	                    booking.getBookingTime())
-	            .slots(slots)
-	            .build();
+		return ReceiptResponse.builder().bookingId(booking.getId()).customerName(booking.getUser().getName())
+				.customerEmail(booking.getUser().getEmail()).turfName(booking.getTurf().getTurfName())
+				.orderId(payment.getRazorpayOrderId()).paymentId(payment.getRazorpayPaymentId())
+				.amount(payment.getAmount()).paymentStatus(payment.getPaymentStatus())
+				.bookingTime(booking.getBookingTime()).slots(slots).build();
 	}
 
 	@Override
@@ -366,137 +308,152 @@ public class BookingServiceImpl implements BookingService {
 				.totalAmount(booking.getTotalAmount()).paymentStatus(booking.getPaymentStatus())
 				.bookingTime(booking.getBookingTime()).slotIds(request.getSlotIds()).build();
 	}
-	
+
 	@Override
 	public ReportResponse getReports() {
 
-	    LocalDate today = LocalDate.now();
+		LocalDate today = LocalDate.now();
 
-	    LocalDateTime start = today.atStartOfDay();
-	    LocalDateTime end = today.plusDays(1).atStartOfDay();
+		LocalDateTime start = today.atStartOfDay();
+		LocalDateTime end = today.plusDays(1).atStartOfDay();
 
-	    return ReportResponse.builder()
+		return ReportResponse.builder()
 
-	            .totalBookings(
-	                    bookingRepository.getTotalBookings())
+				.totalBookings(bookingRepository.getTotalBookings())
 
-	            .totalRevenue(
-	                    bookingRepository.getTotalRevenue())
+				.totalRevenue(bookingRepository.getTotalRevenue())
 
-	            .todayBookings(
-	                    bookingRepository.getTodayBookings(start, end))
+				.todayBookings(bookingRepository.getTodayBookings(start, end))
 
-	            .todayRevenue(
-	                    bookingRepository.getTodayRevenue(start, end))
+				.todayRevenue(bookingRepository.getTodayRevenue(start, end))
 
-	            .build();
+				.build();
 	}
-	
-	
+
 	@Override
-	public List<AdminBookingResponse>
-	getAllBookings() {
+	public List<AdminBookingResponse> getAllBookings() {
 
-	    return bookingRepository
-	            .findAll()
-	            .stream()
-	            .map(this::mapToAdminResponse)
-	            .toList();
+		return bookingRepository.findAll().stream().map(this::mapToAdminResponse).toList();
 	}
 
-	private AdminBookingResponse
-	mapToAdminResponse(
-	        Booking booking) {
+	private AdminBookingResponse mapToAdminResponse(Booking booking) {
 
-	    return AdminBookingResponse
-	            .builder()
-	            .bookingId(
-	                    booking.getId())
-	            .customerName(
-	                    booking.getUser()
-	                           .getName())
-	            .customerEmail(
-	                    booking.getUser()
-	                           .getEmail())
-	            .turfName(
-	                    booking.getTurf()
-	                           .getTurfName())
-	            .totalAmount(
-	                    booking.getTotalAmount())
-	            .paymentStatus(
-	                    booking.getPaymentStatus())
-	            .bookingTime(
-	                    booking.getBookingTime())
-	            .build();
+		return AdminBookingResponse.builder().bookingId(booking.getId()).customerName(booking.getUser().getName())
+				.customerEmail(booking.getUser().getEmail()).turfName(booking.getTurf().getTurfName())
+				.totalAmount(booking.getTotalAmount()).paymentStatus(booking.getPaymentStatus())
+				.bookingTime(booking.getBookingTime()).build();
 	}
-	
+
 	@Override
 	@Transactional
-	public void cancelBooking(
-	        Long bookingId) {
+	public void cancelBooking(Long bookingId) {
 
-	    Booking booking =
-	            bookingRepository
-	                    .findById(
-	                            bookingId)
-	                    .orElseThrow(() ->
-	                            new ResourceNotFoundException(
-	                                    "Booking not found"));
+		Booking booking = bookingRepository.findById(bookingId)
+				.orElseThrow(() -> new ResourceNotFoundException("Booking not found"));
 
-	    List<BookingSlot>
-	            bookingSlots =
-	            booking.getBookingSlots();
+		List<BookingSlot> bookingSlots = booking.getBookingSlots();
 
-	    for (BookingSlot bookingSlot :
-	            bookingSlots) {
+		for (BookingSlot bookingSlot : bookingSlots) {
 
-	        Slot slot =
-	                bookingSlot.getSlot();
+			Slot slot = bookingSlot.getSlot();
 
-	        slot.setStatus(
-	                SlotStatus.OPEN);
+			slot.setStatus(SlotStatus.OPEN);
 
-	        slotRepository.save(
-	                slot);
-	    }
+			slotRepository.save(slot);
+		}
 
-	    bookingRepository.delete(
-	            booking);
+		bookingRepository.delete(booking);
 	}
-	
+
 	@Override
 	public List<MonthlyReportResponse> getMonthlyReports() {
 
-	    List<Booking> bookings = bookingRepository.findAllByOrderByBookingTimeAsc();
-	    List<Payment> payments = paymentRepository.findAllByOrderByCreatedAtAsc();
+		List<Booking> bookings = bookingRepository.findAllByOrderByBookingTimeAsc();
+		List<Payment> payments = paymentRepository.findAllByOrderByCreatedAtAsc();
 
-	    Map<Integer, Long> bookingMap = bookings.stream()
-	            .collect(Collectors.groupingBy(
-	                    b -> b.getBookingTime().getMonthValue(),
-	                    TreeMap::new,
-	                    Collectors.counting()));
+		Map<Integer, Long> bookingMap = bookings.stream().collect(
+				Collectors.groupingBy(b -> b.getBookingTime().getMonthValue(), TreeMap::new, Collectors.counting()));
 
-	    Map<Integer, Double> revenueMap = payments.stream()
-	            .filter(p -> "SUCCESS".equals(p.getPaymentStatus()))
-	            .collect(Collectors.groupingBy(
-	                    p -> p.getCreatedAt().getMonthValue(),
-	                    TreeMap::new,
-	                    Collectors.summingDouble(p -> p.getAmount().doubleValue())));
+		Map<Integer, Double> revenueMap = payments.stream().filter(p -> "SUCCESS".equals(p.getPaymentStatus()))
+				.collect(Collectors.groupingBy(p -> p.getCreatedAt().getMonthValue(), TreeMap::new,
+						Collectors.summingDouble(p -> p.getAmount().doubleValue())));
 
-	    List<MonthlyReportResponse> response = new ArrayList<>();
+		List<MonthlyReportResponse> response = new ArrayList<>();
 
-	    for (int month = 1; month <= 12; month++) {
+		for (int month = 1; month <= 12; month++) {
 
-	        MonthlyReportResponse dto = new MonthlyReportResponse();
+			MonthlyReportResponse dto = new MonthlyReportResponse();
 
-	        dto.setMonth(Month.of(month).name());
+			dto.setMonth(Month.of(month).name());
 
-	        dto.setBookings(bookingMap.getOrDefault(month, 0L));
+			dto.setBookings(bookingMap.getOrDefault(month, 0L));
 
-	        dto.setRevenue(revenueMap.getOrDefault(month, 0.0));
+			dto.setRevenue(revenueMap.getOrDefault(month, 0.0));
 
-	        response.add(dto);
-	    }
+			response.add(dto);
+		}
+
+		return response;
+	}
+
+	@Override
+	@Transactional
+	public void createOfflineBooking(OfflineBookingRequest request) {
+
+		User customer = userRepository.findById(request.getCustomerId())
+				.orElseThrow(() -> new RuntimeException("Customer not found"));
+
+		Turf turf = turfRepository.findById(request.getTurfId())
+				.orElseThrow(() -> new RuntimeException("Turf not found"));
+
+		List<Slot> slots = slotRepository.findAllById(request.getSlotIds());
+
+		if (slots.isEmpty()) {
+			throw new RuntimeException("No slots selected");
+		}
+
+		double totalAmount = slots.stream().mapToDouble(Slot::getPrice).sum();
+
+		Booking booking = Booking.builder().user(customer).turf(turf).totalAmount(totalAmount)
+				.paymentStatus(PaymentStatus.PAID).build();
+
+		booking = bookingRepository.save(booking);
+
+		for (Slot slot : slots) {
+
+			BookingSlot bookingSlot = BookingSlot.builder().booking(booking).slot(slot).build();
+
+			bookingSlotRepository.save(bookingSlot);
+
+			slot.setStatus(SlotStatus.BOOKED);
+
+			slotRepository.save(slot);
+		}
+	}
+
+	@Override
+	public List<AdminBookingResponse> findAllByOrderByIdDesc() {
+
+	    return bookingRepository
+	            .findAll(Sort.by(Sort.Direction.DESC, "id"))
+	            .stream()
+	            .map(this::mapToAdminBookingResponse)
+	            .toList();
+	}
+
+	private AdminBookingResponse mapToAdminBookingResponse(Booking booking) {
+
+	    AdminBookingResponse response = new AdminBookingResponse();
+
+	    response.setBookingId(booking.getId());
+
+	    response.setCustomerName(booking.getUser().getName());
+
+	    response.setTurfName(booking.getTurf().getTurfName());
+
+	    response.setTotalAmount(booking.getTotalAmount());
+
+	    response.setPaymentStatus(booking.getPaymentStatus());
 
 	    return response;
 	}

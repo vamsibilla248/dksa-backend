@@ -15,5 +15,7 @@ public interface UserRepository
     boolean existsByEmail(String email);
     
     List<User> findAllByOrderByIdDesc();
+    
+    List<User> findByRole(String role);
 
 }

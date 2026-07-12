@@ -25,6 +25,8 @@ public class PaymentController {
 
 	@PostMapping("/create-order")
 	public ResponseEntity<PaymentOrderResponse> createOrder(@RequestBody PaymentOrderRequest request) {
+		
+		System.out.println("--------createOrder----------");
 
 		return ResponseEntity.ok(paymentService.createOrder(request));
 	}

@@ -67,27 +67,37 @@ public class PaymentServiceImpl implements PaymentService {
 	@Override
 	public PaymentOrderResponse createOrder(PaymentOrderRequest request) {
 
-		try {
+	    try {
 
-			RazorpayClient client = new RazorpayClient(keyId, keySecret);
+	        System.out.println("Amount : " + request.getAmount());
+	        System.out.println("KeyId : " + keyId);
+	        System.out.println("KeySecret null : " + (keySecret == null));
+	        System.out.println("KeySecret : " + keySecret);
 
-			JSONObject options = new JSONObject();
+	        RazorpayClient client = new RazorpayClient(keyId, keySecret);
 
-			options.put("amount", request.getAmount() * 100);
+	        JSONObject options = new JSONObject();
 
-			options.put("currency", "INR");
+	        options.put("amount", Math.round(request.getAmount() * 100));
 
-			options.put("receipt", "receipt_" + System.currentTimeMillis());
+	        options.put("currency", "INR");
 
-			Order order = client.orders.create(options);
+	        options.put("receipt", "receipt_" + System.currentTimeMillis());
 
-			return PaymentOrderResponse.builder().orderId(order.get("id")).amount(request.getAmount())
-					.currency(order.get("currency")).build();
+	        Order order = client.orders.create(options);
 
-		} catch (Exception ex) {
+	        return PaymentOrderResponse.builder()
+	                .orderId(order.get("id"))
+	                .amount(request.getAmount())
+	                .currency(order.get("currency"))
+	                .build();
 
-			throw new RuntimeException(ex.getMessage());
-		}
+	    } catch (Exception ex) {
+
+	        ex.printStackTrace();
+
+	        throw new RuntimeException("Failed to create Razorpay order", ex);
+	    }
 	}
 	
 	

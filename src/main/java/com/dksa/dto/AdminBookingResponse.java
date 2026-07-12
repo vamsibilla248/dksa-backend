@@ -4,11 +4,17 @@ import java.time.LocalDateTime;
 
 import com.dksa.entity.PaymentStatus;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
-@Data
 @Builder
+@AllArgsConstructor
+@NoArgsConstructor
+@Getter
+@Setter
 public class AdminBookingResponse {
 
     private Long bookingId;
@@ -24,4 +30,5 @@ public class AdminBookingResponse {
     private PaymentStatus paymentStatus;
 
     private LocalDateTime bookingTime;
+    
 }
